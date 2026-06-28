@@ -24,6 +24,7 @@ Set up `study/` for ONE exam/topic: discover the blueprint, scaffold the knowled
   ```
 - **Markdown via the Write tool; state via the engine.** You write `profile.md`, `syllabus.md`, `knowledge/<topic>.md`, and an empty `results.jsonl` with the Write tool. You write `state.json` only through `state.cjs`.
 - **Token discipline.** Write skeletons to disk; keep only the confirmed blueprint outline in context. Do not dump full research transcripts into the conversation.
+- **Language — match the user.** Run the interview and write human-facing prose (blueprint confirmation, `profile.md` Candidate Background / Notes, knowledge-skeleton guidance) in the language the user is interacting in — detect it, never assume English. Keep machine/contract tokens canonical ASCII English: topic slugs/filenames (kebab-case), syllabus `status` values, `state.json` fields/values, exam codes, and the template section headers (`## Summary` / `## References` / …).
 
 ## Flow
 
@@ -49,9 +50,11 @@ Draft the exam blueprint, then confirm with the user before writing anything.
    - **domains and their weights** (e.g. "Design Secure Architectures — 30%")
    - **structure**: question count, duration, formats (incl. multi-response), scoring, pass mark
    - difficulty / prerequisites
+   - **official documentation base** — the authoritative docs site `/sk:learn` will teach from (e.g. AWS → `https://docs.aws.amazon.com/`). Capture the root URL + source name.
    - Cite sources.
 2. **Fallback when web is unavailable or the cert is obscure:** ask the user to paste the official exam guide, and build the blueprint from that. The skill MUST work offline via paste.
-3. **Confirm.** Present the drafted blueprint compactly and let the user correct domains, weights, and structure before any file is written. The confirmed domains become the syllabus topics.
+3. **Confirm the blueprint.** Present it compactly and let the user correct domains, weights, and structure before any file is written.
+4. **Draft and confirm the syllabus.** From the confirmed domains, derive a proposed topic list (kebab-case slugs; roughly more topics for heavier domains) and present it grouped by domain. Let the user **approve / remove / rename / add** topics. Only the approved list becomes `syllabus.md`, and you create a `knowledge/<topic>.md` skeleton ONLY for approved topics. Write no topic files until the user signs off on the list.
 
 See `references/blueprint-template.md` for a worked AWS SAA example.
 
@@ -74,6 +77,11 @@ Create these with the Write tool under `study/` (create directories as needed):
 |--------|--------|
 | <domain> | <xx%> |
 
+## Official Docs
+- Source: <authoritative docs name>
+- Base URL: <root docs URL>
+<!-- /sk:learn grounds each Learn topic in pages under this base, caching a cited summary into knowledge/<topic>.md. -->
+
 ## Candidate Background
 <!-- filled in step 6 -->
 
@@ -81,7 +89,7 @@ Create these with the Write tool under `study/` (create directories as needed):
 - Sources: <links>
 ```
 
-**`study/syllabus.md`** — one row per topic derived from the confirmed domains:
+**`study/syllabus.md`** — one row per **confirmed** topic (from the syllabus confirmation in step 3):
 ```markdown
 # Syllabus
 
@@ -90,7 +98,7 @@ Create these with the Write tool under `study/` (create directories as needed):
 | <topic-slug> | <domain> | not-started | |
 ```
 
-**`study/knowledge/<topic>.md`** — a skeleton per topic (use kebab-case slugs matching the syllabus `topic` column):
+**`study/knowledge/<topic>.md`** — a skeleton for each **confirmed** topic (kebab-case slugs matching the syllabus `topic` column):
 ```markdown
 # <Topic>
 
@@ -128,5 +136,6 @@ Confirm what was created (profile, syllabus, N knowledge skeletons, empty result
 ## Success check
 
 - `study/` contains `profile.md`, `syllabus.md`, ≥1 `knowledge/<topic>.md`, an empty `results.jsonl`, and a valid `state.json` (phase=study) written via `state.cjs`.
-- Syllabus topics map to confirmed domains; statuses start `not-started`.
+- `profile.md` records an `## Official Docs` base (or notes none found) so `/sk:learn` can ground teaching in authoritative docs.
+- The user approved the syllabus topic list (add/remove/rename) before any topic file was written; topics map to confirmed domains; statuses start `not-started`.
 - Re-running detects the existing setup and does not clobber `study/` without confirmation.

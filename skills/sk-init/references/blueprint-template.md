@@ -23,6 +23,11 @@ A concrete model for the `profile.md` / `syllabus.md` shapes that `/sk:init` pro
 | Design High-Performing Architectures | 24% |
 | Design Cost-Optimized Architectures | 20% |
 
+## Official Docs
+- Source: AWS Documentation
+- Base URL: https://docs.aws.amazon.com/
+<!-- /sk:learn grounds each topic in pages under this base (e.g. IAM → docs.aws.amazon.com/IAM/), caching a cited summary into knowledge/<topic>.md. -->
+
 ## Candidate Background
 <!-- filled during the background interview -->
 
