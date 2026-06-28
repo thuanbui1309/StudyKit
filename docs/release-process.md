@@ -4,6 +4,29 @@ How to cut and publish a StudyKit release. The npm package is **`studykit`** (lo
 
 What ships in the npm tarball (verify with `npm pack --dry-run`): `skills/` **minus** `skills/_engine/test/`, `bin/`, `README.md`, `LICENSE` — nothing else. The trim is a `files` negation glob in `package.json` (`"!skills/_engine/test"`); `.npmignore` cannot subtract from the `files` whitelist, so do not rely on it.
 
+## Automated publish (recommended)
+
+`.github/workflows/publish.yml` publishes to npm automatically when a version tag (`v*`) is pushed. Auth is **npm OIDC Trusted Publishing** — no `NPM_TOKEN` secret, and provenance is attached automatically.
+
+**One-time setup on npmjs.com** (required before the first automated publish):
+
+1. npmjs.com → the **`studykit`** package → **Settings** → **Trusted Publisher**.
+2. Add a **GitHub Actions** publisher: organization/user `thuanbui1309`, repository `StudyKit`, workflow filename `publish.yml` (leave environment blank unless you use one).
+3. Save. The workflow's `id-token: write` permission then lets `npm publish` authenticate via OIDC.
+
+**Each release** (from a clean `main`):
+
+```bash
+npm version patch        # or minor | major — bumps package.json, commits, tags vX.Y.Z
+git push --follow-tags   # pushes the commit + the tag
+```
+
+Pushing the `v*` tag triggers the workflow: it runs the tests and publishes that version. Watch it under the repo's **Actions** tab; verify with `npm view studykit version`.
+
+> `npm version` requires a clean working tree and must run on the branch you publish from. The version in `package.json` must be one not already on npm, or the publish step fails (expected).
+
+The manual steps below remain the fallback (e.g. if Actions is down, or for the very first publish before the trusted publisher is configured — that one used `npm publish --otp`).
+
 ## 1. Versioning (semver)
 
 Version lives in `package.json` (`version`). Use [semantic versioning](https://semver.org/) `MAJOR.MINOR.PATCH`:

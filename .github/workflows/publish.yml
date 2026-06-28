@@ -1,0 +1,41 @@
+# Publish StudyKit to npm when a version tag (v*) is pushed.
+#
+# Auth: npm OIDC Trusted Publishing — no NPM_TOKEN secret. This requires a
+# one-time setup on npmjs.com: package "studykit" -> Settings -> Trusted
+# Publisher -> GitHub Actions, repo "thuanbui1309/StudyKit", workflow
+# "publish.yml". Until that is configured, the publish step will fail auth.
+#
+# Release flow (from a clean main):
+#   npm version patch        # or minor | major — bumps package.json, commits, tags vX.Y.Z
+#   git push --follow-tags   # pushes the commit + the tag -> this workflow runs
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm OIDC trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs a recent npm (>= 11.5.1); the bundled one may be older.
+      - name: Use latest npm
+        run: npm install -g npm@latest
+
+      # Zero runtime deps -> no install needed. prepublishOnly re-runs this too.
+      - name: Test
+        run: npm test
+
+      - name: Publish (OIDC trusted publishing; no token)
+        run: npm publish
