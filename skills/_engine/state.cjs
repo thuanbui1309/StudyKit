@@ -64,13 +64,22 @@ function defaultState({ exam } = {}) {
     phase: 'study', // init | study | exam-prep
     today: '',
     day_status: 'not-started', // not-started | in-progress | done
-    step: 'review', // review | learn | recall | done
+    // study phase: review | learn | recall | done
+    // exam-prep phase: revise | mock | done  (plain strings; setStep accepts any)
+    step: 'review',
     step_progress: { answered: 0, total: 0, items: [] },
     config: {
       review_quiz_size: 10,
       select_seed: 1234,
       window_days: 7,
       wrong_factor: 3,
+      // exam-prep (additive; merged onto older states by normalizeState)
+      mock_size: 65, // questions in a full mock exam
+      pass_mark: 0.72, // mock pass threshold (fraction correct)
+      switch_coverage: 0.8, // propose study->exam-prep at this pct_learned
+      switch_days_before: 14, // ...or this many days before the target date
+      // open-ended grading (additive)
+      judge_pass_threshold: 0.7, // rubric overall >= this -> binary correct
     },
     updated_at: '',
   };
@@ -193,10 +202,48 @@ function recordAnswer(studyDir, resultLine) {
   return writeState(studyDir, state);
 }
 
+/**
+ * Append one result line WITHOUT touching step_progress. For OUT-OF-STEP
+ * records — a standalone /sk:judge grade, or a Feynman teach-back judged
+ * alongside (not as one of) the recall quiz items — so the active quiz cursor
+ * is never corrupted. The engine still owns every results.jsonl write, so the
+ * "results.jsonl written only by the engine" invariant holds; this is just the
+ * append-only sibling of record-answer (which also advances the cursor).
+ */
+function appendResult(studyDir, resultLine) {
+  const state = requireState(studyDir);
+  fs.mkdirSync(studyDir, { recursive: true });
+  fs.appendFileSync(resultsFile(studyDir), `${JSON.stringify(resultLine)}\n`, 'utf8');
+  return state; // state unchanged; returned for CLI symmetry
+}
+
 function finishDay(studyDir) {
   const state = requireState(studyDir);
   state.day_status = 'done';
   state.step = 'done';
+  return writeState(studyDir, state);
+}
+
+const PHASES = ['study', 'exam-prep'];
+
+/**
+ * Switch the study phase (study <-> exam-prep) and reset the day so the next
+ * start-day opens the new phase's loop cleanly. Additive: no schema bump — the
+ * phase field already exists; only the accepted set of phases is documented.
+ *
+ * Note the naming overlap: `studyDir` is the directory (conventionally `study`),
+ * while `study` is also a phase value. `set-phase study study` means "in the
+ * study/ dir, switch back to the study phase" — correct, if slightly redundant.
+ */
+function setPhase(studyDir, toPhase) {
+  if (!PHASES.includes(toPhase)) {
+    throw new Error(`Invalid phase "${toPhase}". Expected one of: ${PHASES.join(', ')}.`);
+  }
+  const state = requireState(studyDir);
+  state.phase = toPhase;
+  state.day_status = 'not-started';
+  state.step = 'review';
+  state.step_progress = { answered: 0, total: 0, items: [] };
   return writeState(studyDir, state);
 }
 
@@ -205,7 +252,7 @@ function finishDay(studyDir) {
 // ---------------------------------------------------------------------------
 
 const USAGE =
-  'Usage: node state.cjs <read|write|start-day|set-step|record-answer|finish-day> <studyDir> [args]';
+  'Usage: node state.cjs <read|write|start-day|set-step|record-answer|append-result|finish-day|set-phase> <studyDir> [args]';
 
 function main(argv) {
   const [cmd, studyDir, ...rest] = argv;
@@ -232,8 +279,14 @@ function main(argv) {
     case 'record-answer':
       emit(recordAnswer(studyDir, JSON.parse(rest[0])));
       break;
+    case 'append-result':
+      emit(appendResult(studyDir, JSON.parse(rest[0])));
+      break;
     case 'finish-day':
       emit(finishDay(studyDir));
+      break;
+    case 'set-phase':
+      emit(setPhase(studyDir, rest[0]));
       break;
     default:
       process.stderr.write(`Unknown command: ${cmd}\n${USAGE}\n`);
@@ -265,5 +318,8 @@ module.exports = {
   startDay,
   setStep,
   recordAnswer,
+  appendResult,
   finishDay,
+  setPhase,
+  PHASES,
 };

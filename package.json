@@ -1,7 +1,7 @@
 {
   "name": "studykit",
   "version": "0.1.0",
-  "description": "Turn any project directory into a spaced-repetition study workspace driven by Claude skills. Zero-dependency Node engine + sk:init / sk:learn skills.",
+  "description": "Turn any project directory into a spaced-repetition study workspace driven by Claude skills. Zero-dependency Node engine + sk:init / sk:learn / sk:stats / sk:summary / sk:judge / sk:certs skills.",
   "keywords": [
     "study",
     "spaced-repetition",
@@ -20,10 +20,13 @@
   },
   "files": [
     "skills/",
+    "!skills/_engine/test",
     "bin/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "test": "node --test skills/_engine/test/"
+    "test": "node --test skills/_engine/test/",
+    "prepublishOnly": "node --test skills/_engine/test/"
   }
 }

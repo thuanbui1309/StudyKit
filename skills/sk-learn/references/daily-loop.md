@@ -15,7 +15,7 @@ Goal: spaced resurfacing of *prior* topics — not today's new material (that's 
 Goal: genuinely teach one new topic.
 
 **Propose → confirm → only then commit:**
-- Propose a topic: a `/sk:learn` argument, else the first `learning` topic (resume partial — read its `## Next` note), else the first `not-started` row in `syllabus.md` (heaviest domain first). If all `learned`, offer to deepen or note a possible exam-prep switch (deferred).
+- Propose a topic: a `/sk:learn` argument, else the first `learning` topic (resume partial — read its `## Next` note), else the first `not-started` row in `syllabus.md` (heaviest domain first). If all `learned`, offer to deepen or to switch to exam-prep (proposed per "Auto phase-switch" in `SKILL.md`).
 - **Wait for the user's explicit OK** (or a topic of their own). Do NOT persist state, fetch docs, or write files before they confirm — this is what prevents wasted fetches on the wrong topic.
 - After confirmation: persist (`set-step study learn '[{"topic":"…"}]'`) and set syllabus `status: learning`. This is the durable resume record.
 
@@ -36,15 +36,9 @@ Goal: prove retention of **this cycle's** topic.
 
 **Persist first.** Generate the quiz (q_ids `c01`, `c02`, …, each carrying `topic`) and `set-step study recall` BEFORE the teach-back — that flips `state.step` to `recall` so an interruption resumes the recall, not a fresh Learn.
 
-**Feynman teach-back rubric** — ask the user to explain the topic as if teaching a beginner, then score:
+**Feynman teach-back, judged** — ask the user to explain the topic as if teaching a beginner, then grade with the shared rubric (`.claude/skills/sk-judge/references/judge-rubric.md`): correctness / completeness / clarity / terminology → `overall` → binary via `config.judge_pass_threshold` (0.7). Record ONE binary `kind:"judge"` line with `append-result` (NOT `record-answer` — judging is out-of-step, so it must not move the recall cursor), and write the per-criterion detail into `## Recall — <topic>` of `daily/<date>.md`.
 
-| Signal | Good | Gap |
-| --- | --- | --- |
-| Core idea in plain language | states it without jargon crutches | needs the notes open |
-| Cause/effect & trade-offs | explains *why*, compares options | lists facts only |
-| Edge cases | volunteers a pitfall | misses obvious traps |
-
-Name gaps directly and point to the `knowledge/<topic>.md` section to revisit. Then ask the quiz one question at a time, `kind: "recall"`. **When it completes**, set syllabus `status: learned` for the topic (or keep `learning` + `## Next` if shaky), then ask the user: study another topic (new Learn→Recall cycle) or finish the day?
+Name gaps directly and point to the `knowledge/<topic>.md` section to revisit. Then ask the recall quiz one question at a time, `kind: "recall"`. **When it completes**, set syllabus `status: learned` for the topic (or keep `learning` + `## Next` if shaky), then ask the user: study another topic (new Learn→Recall cycle) or finish the day?
 
 ## Worked day (first study day, empty review pool)
 

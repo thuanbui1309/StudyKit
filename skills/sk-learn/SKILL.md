@@ -39,8 +39,8 @@ When a quiz block starts, generate the questions, then store them as `items` via
 ```
 
 - `options`/`answer` are present for multiple-choice/response; for open question types, `options` may be `[]` and `answer` a model answer string.
-- **q_id** = `d<YYYYMMDD>-<k><NN>`: `r` for review, `c` for recall (e.g. `d20260628-r01`, `d20260628-c03`).
-- `kind` is not stored per item — it is the current `step` (`review` → kind `review`, `recall` → kind `recall`).
+- **q_id** = `d<YYYYMMDD>-<k><NN>`: `r` review, `c` recall, `v` revise, `m` mock (e.g. `d20260628-r01`, `d20260815-m07`).
+- `kind` is not stored per item — it is the current `step` (`review` → kind `review`, `recall` → `recall`, `revise` → `revise`, `mock` → `mock`).
 
 ## Flow
 
@@ -51,7 +51,11 @@ node .claude/skills/_engine/state.cjs read study
 ```
 
 - `{"exists":false}` → tell the user to run **`/sk:init`** first, then stop. Do nothing else.
-- Otherwise keep the returned state in mind: `phase`, `day_status`, `step`, `step_progress`, and `config`. MVP handles `phase: "study"` (other phases: tell the user that phase isn't supported yet).
+- Otherwise keep the returned state in mind: `phase`, `day_status`, `step`, `step_progress`, and `config`, then **route on `phase`**:
+  - **`study`** → the study loop below (steps 2–6), unchanged.
+  - **`exam-prep`** → the revise + mock loop in `references/exam-prep-loop.md`. Follow that file's day routing; the "Asking a question" rules and the engine calls in this file still apply.
+  - Any other value → tell the user that phase isn't recognized, then stop.
+- If `/sk:learn` was invoked with the `mock` argument, jump straight to the **Mock** block (`references/exam-prep-loop.md`) in the current phase.
 
 ### 2. Resume decision
 
@@ -65,7 +69,7 @@ node .claude/skills/_engine/state.cjs read study
   - **`review` with `answered == total`** → Review is done → start a **Learn** block.
   - **`recall` with `answered == total`** → this cycle's Recall is done → finalize the topic (syllabus → `learned`) and offer **Continue** (another Learn→Recall cycle) or **Finish** (see End of cycle).
   - **`learn`** → resume the **same** topic from `step_progress.items[0].topic`. NEVER jump to a different topic, re-suggest, or re-fetch — even if `syllabus.md` shows that topic `learned`. Continue from its cached `knowledge/<topic>.md` (+ `## Next` note if present). If the lesson clearly already finished, move on to its **Recall**, not a new topic.
-- **Done** — `day_status: "done"`: the day is complete; offer (a) stop, (b) an extra Learn→Recall cycle, or (c) if it's end-of-week, note that a phase switch may be due (full logic is a later release).
+- **Done** — `day_status: "done"`: the day is complete; offer (a) stop, (b) an extra Learn→Recall cycle, or (c) the exam-prep switch if its criteria are met (see "Auto phase-switch" in step 6).
 
 ### 3. Review block
 
@@ -94,7 +98,7 @@ node .claude/skills/_engine/select.cjs study/results.jsonl \
 2. Otherwise read `study/syllabus.md` and propose, in priority:
    - first a **`learning`** topic (started but unfinished) — continue it; read its `## Next` note in `knowledge/<topic>.md` for where to resume;
    - else the **first `not-started` topic in file order** (the syllabus is heaviest-domain-first, so this follows domain priority).
-3. If every topic is `learned`, say the syllabus is fully covered and offer to deepen any topic or note that an exam-prep switch may be due (deferred to a later release).
+3. If every topic is `learned`, say the syllabus is fully covered and offer to deepen any topic or to switch to exam-prep (propose it per "Auto phase-switch" in step 6).
 
 **Confirm before committing anything.** Present the proposal and WAIT for the user's explicit agreement:
 
@@ -132,7 +136,12 @@ Recall the topic just learned **this cycle**. Persist the recall step FIRST so a
    node .claude/skills/_engine/state.cjs set-step study recall '<itemsJson>'
    ```
    This flips `state.step` to `recall` immediately — from now on, resume lands on this topic's recall.
-2. **Teach-back (Feynman)**: ask the user to explain the topic from memory; evaluate against `knowledge/<topic>.md` and name the gaps plainly.
+2. **Teach-back (Feynman), judged**: ask the user to explain the topic from memory, then grade it with the shared rubric (`.claude/skills/sk-judge/references/judge-rubric.md`) — score correctness/completeness/clarity/terminology, take `overall = mean`, map to binary via `config.judge_pass_threshold` (default 0.7). Record ONE binary line via the **append-only** path so the recall quiz cursor (step 3) is untouched:
+   ```bash
+   node .claude/skills/_engine/state.cjs append-result study \
+     '{"date":"<today>","topic":"<topic>","kind":"judge","q_id":"d<YYYYMMDD>-j01","correct":<bool>,"score":<0|1>}'
+   ```
+   Write the per-criterion rubric into `daily/<date>.md` under `## Recall — <topic>` (human-facing); only the binary line reaches `results.jsonl`. Name the gaps plainly and point to the `knowledge/<topic>.md` section to revisit.
 3. Render the quiz into `daily/<date>.md` under `## Recall — <topic>` and ask one at a time with `kind: "recall"` (see "Asking a question").
 4. **When the quiz completes** (`answered == total`): set the topic's `syllabus.md` `status` → `learned` (or keep `learning` + a `## Next` note if it still isn't solid). The cycle is done — go to End of cycle.
 
@@ -147,7 +156,28 @@ After a cycle's Recall, ask:
   ```bash
   node .claude/skills/_engine/state.cjs finish-day study
   ```
-  Summarize the day. If it's end-of-week or other criteria suggest exam-prep, *suggest* a phase switch (do not perform it — deferred to a later release).
+  Summarize the day, then run the **Auto phase-switch** check below.
+
+### Auto phase-switch (study → exam-prep)
+
+After `finish-day` in the study phase, check whether it's time to propose exam-prep. Read the target date once (`grep -i "target date" study/profile.md`), then call the aggregate:
+
+```bash
+node .claude/skills/_engine/stats.cjs study '{"targetDate":"<date>"}'   # drop the opt if there is no target date
+```
+
+Propose the switch when **either** criterion holds:
+- `coverage.pct_learned >= config.switch_coverage` (default 0.8), **or**
+- `pace.days_remaining != null && pace.days_remaining <= config.switch_days_before` (default 14).
+
+If met, ask — **never switch silently**:
+
+> Coverage <pct>% and <days> days to your exam — switch to **exam-prep** (revise + mock exams)? You can switch back anytime.
+
+- **Yes** → `node .claude/skills/_engine/state.cjs set-phase study exam-prep`. The next `/sk:learn` opens the exam-prep loop (`references/exam-prep-loop.md`).
+- **No** → stay in study; do not re-propose the same day.
+
+If neither criterion holds, don't mention switching.
 
 ## Asking a question (every quiz item)
 
@@ -204,5 +234,6 @@ This file is for the human. Resume never reads it — `state.json.step_progress.
 - A day runs Review once, then one or more Learn→Recall cycles; `finish-day` only on the user's choice.
 - Each quiz answer appends one `results.jsonl` line and increments `answered`; Learn Q&A is written at block end.
 - Empty review pool (first day) skips Review straight to Learn with a note.
+- Phase routing: `phase: study` runs the loop above; `phase: exam-prep` runs the revise + mock loop (`references/exam-prep-loop.md`) with mid-mock resume from `state.json` only; the study→exam-prep switch is proposed on criteria and only applied on explicit user confirmation.
 
-See `references/daily-loop.md` for block-by-block detail, the Feynman rubric, and a full worked day.
+See `references/daily-loop.md` for study-phase block detail, the Feynman rubric, and a worked day; `references/exam-prep-loop.md` for the exam-prep revise + mock loop, blueprint weighting, mock resume, and scoring.

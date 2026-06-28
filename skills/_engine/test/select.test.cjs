@@ -38,6 +38,22 @@ test('aggregateByTopic keeps the latest date + latest wrong flag, within window'
   assert.strictEqual(vpc.wrong, true);
 });
 
+test('aggregateByTopic is kind-agnostic: judge/mock/revise lines count like any attempt', () => {
+  // select.cjs reads topic/date/correct only — the `kind` field is ignored, so
+  // judge, mock, and revise lines flow through spaced repetition unchanged.
+  const lines = [
+    { topic: 'iam', date: '2026-06-27', correct: true, kind: 'recall' },
+    { topic: 'iam', date: '2026-06-28', correct: false, kind: 'judge' }, // newer -> wrong wins
+    { topic: 'vpc', date: '2026-06-28', correct: false, kind: 'mock' },
+    { topic: 's3', date: '2026-06-28', correct: true, kind: 'revise' },
+  ];
+  const aggs = select
+    .aggregateByTopic(lines, baseOpts)
+    .sort((a, b) => a.topic.localeCompare(b.topic));
+  assert.deepStrictEqual(aggs.map((a) => a.topic), ['iam', 's3', 'vpc']);
+  assert.strictEqual(aggs.find((a) => a.topic === 'iam').wrong, true); // judge line counted
+});
+
 test('computeWeight: older is heavier; a wrong latest attempt multiplies by wrongFactor', () => {
   const recent = { topic: 'a', lastSeen: '2026-06-27', wrong: false }; // age 1 -> 2
   const older = { topic: 'b', lastSeen: '2026-06-24', wrong: false }; // age 4 -> 5

@@ -149,12 +149,92 @@ test('record-answer appends exactly one line and increments answered', () => {
   assert.deepStrictEqual(JSON.parse(lines[0]), line1);
 });
 
+test('append-result appends a line WITHOUT advancing the step cursor', () => {
+  const dir = tmpStudy();
+  seed(dir);
+  state.setStep(dir, 'review', [
+    { q_id: 'q1', topic: 'vpc' },
+    { q_id: 'q2', topic: 's3' },
+  ]);
+  state.recordAnswer(dir, { date: '2026-06-28', topic: 'vpc', kind: 'review', q_id: 'q1', correct: true, score: 1 });
+  const before = state.readState(dir).step_progress.answered; // 1 (mid review quiz)
+  // A standalone judge grade lands mid-quiz — must NOT move the review cursor.
+  state.appendResult(dir, { date: '2026-06-28', topic: 'iam', kind: 'judge', q_id: 'd20260628-j01', correct: true, score: 1 });
+  const after = state.readState(dir).step_progress.answered;
+  assert.strictEqual(after, before); // cursor untouched -> review resume stays correct
+  const lines = fs.readFileSync(state.resultsFile(dir), 'utf8').trim().split('\n');
+  assert.strictEqual(lines.length, 2); // both the review answer and the judge line
+  assert.strictEqual(JSON.parse(lines[1]).kind, 'judge');
+});
+
 test('finish-day marks the day done', () => {
   const dir = tmpStudy();
   seed(dir);
   const s = state.finishDay(dir);
   assert.strictEqual(s.day_status, 'done');
   assert.strictEqual(s.step, 'done');
+});
+
+// --- exam-prep additions (set-phase + additive config) ---
+
+test('STATE_VERSION is still 1 — the exam-prep additions are additive', () => {
+  assert.strictEqual(state.STATE_VERSION, 1);
+});
+
+test('defaultState carries the exam-prep + judge config defaults', () => {
+  const c = state.defaultState({ exam: 'X' }).config;
+  assert.strictEqual(c.mock_size, 65);
+  assert.strictEqual(c.pass_mark, 0.72);
+  assert.strictEqual(c.switch_coverage, 0.8);
+  assert.strictEqual(c.switch_days_before, 14);
+  assert.strictEqual(c.judge_pass_threshold, 0.7);
+});
+
+test('normalizeState backfills new exam-prep config onto an old-shape state', () => {
+  // A v1 state written BEFORE exam-prep existed: only the original four config keys.
+  const old = {
+    version: 1,
+    exam: 'X',
+    phase: 'study',
+    today: '2026-06-01',
+    day_status: 'done',
+    step: 'done',
+    step_progress: { answered: 0, total: 0, items: [] },
+    config: { review_quiz_size: 10, select_seed: 1234, window_days: 7, wrong_factor: 3 },
+    updated_at: '2026-06-01T00:00:00.000Z',
+  };
+  const s = state.normalizeState(old);
+  assert.strictEqual(s.version, 1); // no bump — old states keep working
+  assert.strictEqual(s.config.review_quiz_size, 10); // original value preserved
+  assert.strictEqual(s.config.mock_size, 65); // new defaults filled in
+  assert.strictEqual(s.config.pass_mark, 0.72);
+  assert.strictEqual(s.config.switch_coverage, 0.8);
+  assert.strictEqual(s.config.switch_days_before, 14);
+  assert.strictEqual(s.config.judge_pass_threshold, 0.7);
+});
+
+test('set-phase flips to exam-prep and resets the day', () => {
+  const dir = tmpStudy();
+  seed(dir);
+  state.startDay(dir); // day in-progress, step=review
+  const s = state.setPhase(dir, 'exam-prep');
+  assert.strictEqual(s.phase, 'exam-prep');
+  assert.strictEqual(s.day_status, 'not-started');
+  assert.deepStrictEqual(s.step_progress, { answered: 0, total: 0, items: [] });
+});
+
+test('set-phase switches back to study', () => {
+  const dir = tmpStudy();
+  seed(dir, { phase: 'exam-prep' });
+  const s = state.setPhase(dir, 'study');
+  assert.strictEqual(s.phase, 'study');
+  assert.strictEqual(s.day_status, 'not-started');
+});
+
+test('set-phase rejects an unknown phase', () => {
+  const dir = tmpStudy();
+  seed(dir);
+  assert.throws(() => state.setPhase(dir, 'bogus'), /Invalid phase/);
 });
 
 // --- CLI wiring (skills shell out to these) ---
@@ -178,4 +258,13 @@ test('CLI: record-answer appends + increments through stdout state', () => {
   );
   assert.strictEqual(JSON.parse(out).step_progress.answered, 1);
   assert.strictEqual(fs.readFileSync(state.resultsFile(dir), 'utf8').trim().split('\n').length, 1);
+});
+
+test('CLI: set-phase exam-prep round-trips through stdout and resets the day', () => {
+  const dir = tmpStudy();
+  execFileSync('node', [ENGINE, 'write', dir, JSON.stringify({ version: 1, exam: 'CLI' })], { encoding: 'utf8' });
+  const out = execFileSync('node', [ENGINE, 'set-phase', dir, 'exam-prep'], { encoding: 'utf8' });
+  const s = JSON.parse(out);
+  assert.strictEqual(s.phase, 'exam-prep');
+  assert.strictEqual(s.day_status, 'not-started');
 });

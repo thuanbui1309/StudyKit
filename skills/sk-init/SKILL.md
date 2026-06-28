@@ -117,13 +117,17 @@ Create these with the Write tool under `study/` (create directories as needed):
 
 ### 5. Write initial state (engine only)
 
-Propose `review_quiz_size` from the exam size (a daily review of ~10 is typical), confirm it, then:
+Propose, confirm, then write. From the confirmed blueprint, derive three config values:
+
+- `review_quiz_size` — the daily Review size (~10 is typical).
+- `mock_size` — full mock-exam length, proposed from the real exam's question count (e.g. SAA-C03 → 65).
+- `pass_mark` — the mock pass threshold as a **fraction of correct answers** (0–1). Convert from the official pass mark: a scaled `720/1000` ≈ `0.72`; a percentage `70%` → `0.70`. This is also written into `profile.md`'s Exam line.
 
 ```bash
-node .claude/skills/_engine/state.cjs write study '{"version":1,"exam":"<exam name>","phase":"study","day_status":"not-started","config":{"review_quiz_size":10,"select_seed":1234,"window_days":7,"wrong_factor":3}}'
+node .claude/skills/_engine/state.cjs write study '{"version":1,"exam":"<exam name>","phase":"study","day_status":"not-started","config":{"review_quiz_size":10,"select_seed":1234,"window_days":7,"wrong_factor":3,"mock_size":65,"pass_mark":0.72}}'
 ```
 
-The engine fills the remaining fields (`today`, `step`, `step_progress`, `updated_at`) and validates the schema version. `select_seed` only needs to be stored once for determinism — keep the default unless the user wants a specific seed.
+The engine fills the remaining fields (`today`, `step`, `step_progress`, `updated_at`), backfills any config key you omit (e.g. the exam-prep `switch_coverage`/`switch_days_before` thresholds keep their defaults — `/sk:learn` proposes the phase switch off them), and validates the schema version. `select_seed` only needs to be stored once for determinism — keep the default unless the user wants a specific seed. `mock_size`/`pass_mark` are what `/sk:learn` uses once the project reaches the exam-prep phase.
 
 ### 6. Background interview
 

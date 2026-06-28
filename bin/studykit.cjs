@@ -4,10 +4,10 @@
 /**
  * studykit — install CLI.
  *
- * `studykit init [targetDir]` copies the product skills (_engine, sk-init,
- * sk-learn) into <targetDir>/.claude/skills/. It refreshes skill files on
- * re-run (idempotent) and never creates or touches <targetDir>/study/ — that
- * workspace belongs to /sk:init.
+ * `studykit init [targetDir]` copies the product skills (see PRODUCT_SKILLS:
+ * the zero-dep _engine plus the sk-* study skills) into
+ * <targetDir>/.claude/skills/. It refreshes skill files on re-run (idempotent)
+ * and never creates or touches <targetDir>/study/ — that belongs to /sk:init.
  *
  * Works both from a git checkout (`node bin/studykit.cjs init <dir>`) and when
  * installed from npm (`npx studykit init <dir>`): skills/ is always a sibling
@@ -21,7 +21,7 @@ const path = require('node:path');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const SKILLS_SRC = path.join(REPO_ROOT, 'skills');
-const PRODUCT_SKILLS = ['_engine', 'sk-init', 'sk-learn'];
+const PRODUCT_SKILLS = ['_engine', 'sk-init', 'sk-learn', 'sk-stats', 'sk-summary', 'sk-judge', 'sk-certs'];
 
 function version() {
   try {
